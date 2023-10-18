@@ -5,12 +5,17 @@ import os
 from logging.config import fileConfig
 from pathlib import Path
 from typing import Tuple
+import spacy
+from presidio_analyzer.transformers_rec.configuration import BERT_DEID_CONFIGURATION
 
 from flask import Flask, request, jsonify, Response
 from werkzeug.exceptions import HTTPException
 
 from presidio_analyzer.analyzer_engine import AnalyzerEngine
 from presidio_analyzer.analyzer_request import AnalyzerRequest
+from presidio_analyzer.recognizer_registry import RecognizerRegistry
+from presidio_analyzer.transformers_rec import TransformersRecognizer
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 DEFAULT_PORT = "3000"
 
@@ -37,7 +42,33 @@ class Server:
         self.logger.setLevel(os.environ.get("LOG_LEVEL", self.logger.level))
         self.app = Flask(__name__)
         self.logger.info("Starting analyzer engine")
-        self.engine = AnalyzerEngine()
+
+        registry = RecognizerRegistry()
+        registry.load_predefined_recognizers()
+
+        supported_entities = BERT_DEID_CONFIGURATION.get(
+            "PRESIDIO_SUPPORTED_ENTITIES"
+        )
+
+        model = 'obi/deid_roberta_i2b2'
+        transformers_recognizerr = TransformersRecognizer(
+            model_path=model,
+            supported_entities=supported_entities
+        )
+        transformers_recognizerr.load_transformer(**BERT_DEID_CONFIGURATION)
+
+        if not spacy.util.is_package("en_core_web_sm"):
+            self.logger.info("Downloading spacy model en_core_web_sm")
+            spacy.cli.download("en_core_web_sm")
+
+        registry.add_recognizer(transformers_recognizerr)
+        registry.remove_recognizer("SpacyRecognizer")
+        
+        nlp_engine = NlpEngineProvider(
+            conf_file=Path(Path(__file__).parent, "conf", "transformers.yaml")
+        ).create_engine()
+
+        self.engine = AnalyzerEngine(registry=registry, nlp_engine=nlp_engine)
         self.logger.info(WELCOME_MESSAGE)
 
         @self.app.route("/health")
@@ -57,6 +88,9 @@ class Server:
                 if not req_data.language:
                     raise Exception("No language provided")
 
+                self.logger.debug(
+                    f"Received request to analyze text: {req_data.text}"
+                )
                 recognizer_result_list = self.engine.analyze(
                     text=req_data.text,
                     language=req_data.language,
@@ -67,7 +101,9 @@ class Server:
                     ad_hoc_recognizers=req_data.ad_hoc_recognizers,
                     context=req_data.context,
                 )
-
+                self.logger.debug(
+                    f"Returning {len(recognizer_result_list)} results"
+                )
                 return Response(
                     json.dumps(
                         recognizer_result_list,

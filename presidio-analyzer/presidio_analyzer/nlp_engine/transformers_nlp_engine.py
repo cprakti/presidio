@@ -9,7 +9,6 @@ from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
 
 try:
-    import torch
     import transformers
     from transformers import (
         AutoTokenizer,
@@ -68,7 +67,7 @@ class TransformersComponent:
                 logger.warning(
                     f"Transformers model returned {d} but no valid span was found."
                 )
-        doc.ents = ents
+        doc.ents = spacy.util.filter_spans(ents) 
         return doc
 
 

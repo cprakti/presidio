@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 ARG NAME
 ARG NLP_CONF_FILE=conf/transformers.yaml
@@ -9,7 +9,9 @@ WORKDIR /usr/bin/${NAME}
 COPY ./Pipfile* /usr/bin/${NAME}/
 RUN pip install pipenv \
   && pipenv install --deploy
-RUN pipenv install torch transformers huggingface_hub --skip-lock
+RUN pipenv install transformers huggingface_hub --skip-lock
+# install specific version of torch; seems to fix seg fault
+RUN pipenv install torch==1.11.0 --skip-lock
 
 # install nlp models specified in conf/default.yaml
 COPY ./install_nlp_models.py /usr/bin/${NAME}/

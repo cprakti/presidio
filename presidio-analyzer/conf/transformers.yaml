@@ -4,4 +4,4 @@ models:
     lang_code: en
     model_name:
       spacy: en_core_web_sm
-      transformers: elastic/distilbert-base-uncased-finetuned-conll03-english
+      transformers: obi/deid_roberta_i2b2
